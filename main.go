@@ -3,121 +3,47 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/cognitiveservices/v3.0/translatortext"
-	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/prometheus/common/log"
+	"github.com/septemhill/translator/repository/boltdb"
+	"github.com/septemhill/translator/service"
+	"github.com/septemhill/translator/service/azure"
 )
 
-var cfg *TslConfig
-
-func init() {
-	var err error
-	cfg, err = NewTslConfig()
-	if err != nil {
-		panic("tslconfig init failed")
-	}
-}
-
-type DictionaryClient struct {
-	client translatortext.TranslatorClient
-}
-
-func NewDictionaryClient() *DictionaryClient {
-	key := os.Getenv("AZURE_TRANSLATOR_TEXT_KEY")
-	endpoint := os.Getenv("AZURE_TRANSLATOR_TEXT_ENDPOINT")
-
-	client := translatortext.NewTranslatorClient(endpoint)
-	client.Authorizer = autorest.NewCognitiveServicesAuthorizer(key)
-
-	return &DictionaryClient{
-		client: client,
-	}
-}
-
-func (cli *DictionaryClient) displayDictionaryLookupResult(dres *translatortext.DictionaryLookupResultItem, ex func(translatortext.DictionaryLookupResultItem) *translatortext.DictionaryExampleResultItem) {
-	var eres *translatortext.DictionaryExampleResultItem
-	if dres == nil {
-		return
-	}
-
-	if ex != nil {
-		eres = ex(*dres)
-	}
-
-	for _, t := range *dres.Translations {
-		fmt.Println(to.String(t.PosTag))
-		fmt.Printf("\t%s\n", to.String(t.DisplayTarget))
-
-		if ex != nil {
-			for _, e := range *eres.Examples {
-				fmt.Printf("\t\t%s %s %s\n", to.String(e.SourcePrefix), to.String(e.SourceTerm), to.String(e.SourceSuffix))
-			}
+func streamOut(tr *service.Translation, w io.Writer) {
+	for _, s := range tr.Speech {
+		w.Write([]byte(fmt.Sprintf("%s\n", s.Name)))
+		for _, wd := range s.Result {
+			w.Write([]byte(fmt.Sprintf("\t%s\n", wd)))
+		}
+		w.Write([]byte("\n"))
+		for _, ex := range s.Example {
+			w.Write([]byte(fmt.Sprintf("\t%s\n", ex)))
 		}
 	}
-}
-
-func (cli *DictionaryClient) dictionaryLookup(word string) *translatortext.DictionaryLookupResultItem {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	lookupInput := []translatortext.DictionaryLookupTextInput{
-		translatortext.DictionaryLookupTextInput{
-			Text: to.StringPtr(word),
-		},
-	}
-
-	result, err := cli.client.DictionaryLookup(ctx, cfg.DefaultFrom, cfg.DefaultTo, lookupInput, "")
-	if err != nil {
-		log.Println("translator: ", err)
-	}
-
-	if len(*result.Value) == 0 {
-		return nil
-	}
-
-	return &(*result.Value)[0]
-}
-
-func (cli *DictionaryClient) dictionaryExample(dlresult translatortext.DictionaryLookupResultItem) *translatortext.DictionaryExampleResultItem {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	inputs := make([]translatortext.DictionaryExampleTextInput, 0)
-
-	for _, word := range *dlresult.Translations {
-		i := translatortext.DictionaryExampleTextInput{
-			Text:        (*word.BackTranslations)[0].NormalizedText,
-			Translation: word.NormalizedTarget,
-		}
-		inputs = append(inputs, i)
-	}
-
-	result, err := cli.client.DictionaryExamples(ctx, cfg.DefaultFrom, cfg.DefaultTo, inputs, "")
-	if err != nil {
-		log.Println("DictionaryExample failed: ", err)
-	}
-
-	return &(*result.Value)[0]
-}
-
-func (cli *DictionaryClient) DictionaryLookup(word string, ex bool) {
-	if ex {
-		cli.displayDictionaryLookupResult(cli.dictionaryLookup(word), cli.dictionaryExample)
-		return
-	}
-
-	cli.displayDictionaryLookupResult(cli.dictionaryLookup(word), nil)
 }
 
 func main() {
-	client := NewDictionaryClient()
-	if client == nil {
-		log.Printf("internal unknown error")
+	if len(os.Args) < 2 {
+		log.Errorln("No enough parameter")
 	}
 
-	client.DictionaryLookup("document", false)
+	ctx := context.Background()
+	repo, _ := boltdb.NewBoltDBRepository()
+	defer repo.Close(ctx)
+
+	proxy := NewDictionaryProxy(NewDictionary(azure.NewWordTranslateService()), repo)
+
+	st := time.Now()
+	tr, err := proxy.Lookup(ctx, os.Args[1], "en", "zh-Hans", true)
+	et := time.Now()
+
+	if err != nil {
+		log.Fatal("Failed to lookup word: ", err)
+	}
+	streamOut(tr, os.Stdout)
+	fmt.Println(et.Sub(st))
 }
