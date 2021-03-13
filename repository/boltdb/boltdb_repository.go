@@ -50,6 +50,9 @@ func (repo *boltDbRepository) Query(ctx context.Context, word, src, dst string) 
 		}
 
 		b := bk.Get([]byte(src + "-" + dst))
+		if len(b) == 0 {
+			return nil
+		}
 
 		if err := serialization.Deserialization(compress.Decompress(decorator.NewBufferDecorator(b))).Decode(&t); err != nil {
 			return err

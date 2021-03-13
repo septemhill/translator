@@ -19,8 +19,6 @@ func (d *dictionary) Lookup(ctx context.Context, word, src, dst string, example 
 	if err != nil {
 		return nil, err
 	}
-
-	//d.streamOut(m, os.Stdout)
 	return tr, nil
 }
 

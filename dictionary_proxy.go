@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/prometheus/common/log"
+	"github.com/septemhill/translator/logger"
 	"github.com/septemhill/translator/repository"
 	"github.com/septemhill/translator/service"
 )
@@ -35,7 +35,7 @@ func (p *dictionaryProxy) Lookup(ctx context.Context, word, src, dst string, exa
 		return nil, err
 	}
 	if err := p.repo.Record(ctx, word, src, dst, htr); err != nil {
-		log.Warnln("Failed to record translation in local db: ", err)
+		logger.ContextErrorln(ctx, "Failed to record translation in local db: ", err)
 	}
 	return htr, nil
 }

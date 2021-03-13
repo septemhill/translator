@@ -2,16 +2,20 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"os"
-	"time"
 
-	"github.com/prometheus/common/log"
+	"github.com/septemhill/translator/logger"
+	"github.com/septemhill/translator/logger/stdoutlog"
 	"github.com/septemhill/translator/repository/boltdb"
 	"github.com/septemhill/translator/service"
 	"github.com/septemhill/translator/service/azure"
 )
+
+var fromLang = flag.String("from", "en", "Language support list: https://docs.microsoft.com/en-gb/azure/cognitive-services/translator/language-support")
+var toLang = flag.String("to", "zh-Hans", "Language support list: https://docs.microsoft.com/en-gb/azure/cognitive-services/translator/language-support")
 
 func streamOut(tr *service.Translation, w io.Writer) {
 	for _, s := range tr.Speech {
@@ -27,23 +31,27 @@ func streamOut(tr *service.Translation, w io.Writer) {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Errorln("No enough parameter")
-	}
-
 	ctx := context.Background()
-	repo, _ := boltdb.NewBoltDBRepository()
+	ctx = logger.NewContext(ctx, stdoutlog.StdoutLogger())
+
+	if len(os.Args) < 2 {
+		logger.ContextFatalln(ctx, "No enough parameter")
+	}
+	flag.Parse()
+
+	repo, err := boltdb.NewBoltDBRepository()
+	if err != nil {
+		logger.ContextErrorln(ctx, "failed to create boltdb repository")
+	}
 	defer repo.Close(ctx)
 
 	proxy := NewDictionaryProxy(NewDictionary(azure.NewWordTranslateService()), repo)
 
-	st := time.Now()
-	tr, err := proxy.Lookup(ctx, os.Args[1], "en", "zh-Hans", true)
-	et := time.Now()
+	l := len(os.Args)
+	tr, err := proxy.Lookup(ctx, os.Args[l-1], *fromLang, *toLang, true)
 
 	if err != nil {
-		log.Fatal("Failed to lookup word: ", err)
+		logger.ContextFatalf(ctx, "failed to lookup word: %s\n", err.Error())
 	}
 	streamOut(tr, os.Stdout)
-	fmt.Println(et.Sub(st))
 }

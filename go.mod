@@ -8,5 +8,7 @@ require (
 	github.com/Azure/go-autorest/autorest/to v0.4.0
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
 	github.com/boltdb/bolt v1.3.1
+	github.com/elastic/go-elasticsearch/v7 v7.11.0 // indirect
+	github.com/fatih/structs v1.1.0 // indirect
 	github.com/prometheus/common v0.15.0
 )
