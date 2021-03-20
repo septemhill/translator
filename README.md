@@ -10,7 +10,7 @@
 
 
 ## Requirements
-* Only $AZURE_COGNITIVE_SERVICE_KEY and $AZURE_COGNITIVE_SERVICE_ENDPOINT environment variables were needed.
+* Only `$AZURE_COGNITIVE_SERVICE_KEY` and `$AZURE_COGNITIVE_SERVICE_ENDPOINT` environment variables are needed.
 
 ## Sample
 ![alt text](sample.gif "Title")
